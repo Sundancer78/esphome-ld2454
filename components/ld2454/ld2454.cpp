@@ -69,7 +69,9 @@ int16_t LD2454Component::decode_signed_value_(
   return positive ? value : -value;
 }
 
-TargetDirection LD2454Component::determine_direction_(int16_t speed_mm_s) {
+TargetDirection LD2454Component::determine_direction_(
+    int16_t speed_mm_s) {
+
   if (speed_mm_s > 0) {
     return TargetDirection::APPROACHING;
   }
@@ -81,7 +83,9 @@ TargetDirection LD2454Component::determine_direction_(int16_t speed_mm_s) {
   return TargetDirection::STILL;
 }
 
-const char *LD2454Component::direction_to_string_(TargetDirection direction) {
+const char *LD2454Component::direction_to_string_(
+    TargetDirection direction) {
+
   switch (direction) {
     case TargetDirection::APPROACHING:
       return "Approaching";
@@ -182,19 +186,26 @@ void LD2454Component::process_frame_() {
 
   if (this->target_count_sensor_ != nullptr &&
       target_count != this->last_target_count_) {
+
     this->target_count_sensor_->publish_state(target_count);
     this->last_target_count_ = target_count;
   }
 
   if (this->moving_target_count_sensor_ != nullptr &&
       moving_target_count != this->last_moving_target_count_) {
-    this->moving_target_count_sensor_->publish_state(moving_target_count);
+
+    this->moving_target_count_sensor_->publish_state(
+        moving_target_count);
+
     this->last_moving_target_count_ = moving_target_count;
   }
 
   if (this->still_target_count_sensor_ != nullptr &&
       still_target_count != this->last_still_target_count_) {
-    this->still_target_count_sensor_->publish_state(still_target_count);
+
+    this->still_target_count_sensor_->publish_state(
+        still_target_count);
+
     this->last_still_target_count_ = still_target_count;
   }
 
@@ -214,8 +225,11 @@ void LD2454Component::process_frame_() {
 void LD2454Component::publish_target_(uint8_t target) {
   auto &data = this->targets_[target];
 
+  // Target ist verschwunden:
+  // Werte nur einmal auf NAN setzen.
   if (!data.detected) {
     if (data.published_detected) {
+
       if (this->target_x_sensors_[target] != nullptr)
         this->target_x_sensors_[target]->publish_state(NAN);
 
@@ -244,20 +258,7 @@ void LD2454Component::publish_target_(uint8_t target) {
     return;
   }
 
-  const bool changed =
-      !data.published_detected ||
-      data.x != data.published_x ||
-      data.y != data.published_y ||
-      data.speed_mm_s != data.published_speed_mm_s ||
-      data.resolution != data.published_resolution ||
-      std::fabs(data.distance - data.published_distance) >= 1.0f ||
-      std::fabs(data.angle - data.published_angle) >= 0.1f ||
-      data.direction != data.published_direction;
-
-  if (!changed) {
-    return;
-  }
-
+  // Ein vorhandenes Target wird bei jedem gültigen Radarframe publiziert.
   if (this->target_x_sensors_[target] != nullptr)
     this->target_x_sensors_[target]->publish_state(data.x);
 
@@ -276,6 +277,7 @@ void LD2454Component::publish_target_(uint8_t target) {
   if (this->target_resolution_sensors_[target] != nullptr)
     this->target_resolution_sensors_[target]->publish_state(data.resolution);
 
+  // Richtung nur veröffentlichen, wenn sie sich ändert.
   if (this->target_direction_sensors_[target] != nullptr &&
       (!data.published_detected ||
        data.direction != data.published_direction)) {

@@ -1,18 +1,20 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+
 from esphome.components import sensor
 from esphome.const import (
-    CONF_ID,
-    DEVICE_CLASS_DISTANCE,
     STATE_CLASS_MEASUREMENT,
-    UNIT_CENTIMETER,
     UNIT_DEGREES,
     UNIT_MILLIMETER,
 )
 
-from . import LD2454Component
+from . import CONF_LD2454_ID, LD2454Component
+
+DEPENDENCIES = ["ld2454"]
 
 CONF_TARGET_COUNT = "target_count"
+CONF_MOVING_TARGET_COUNT = "moving_target_count"
+CONF_STILL_TARGET_COUNT = "still_target_count"
 
 CONF_TARGET_1_X = "target_1_x"
 CONF_TARGET_1_Y = "target_1_y"
@@ -45,7 +47,6 @@ POSITION_SCHEMA = sensor.sensor_schema(
 DISTANCE_SCHEMA = sensor.sensor_schema(
     unit_of_measurement=UNIT_MILLIMETER,
     accuracy_decimals=0,
-    device_class=DEVICE_CLASS_DISTANCE,
     state_class=STATE_CLASS_MEASUREMENT,
 )
 
@@ -56,7 +57,7 @@ ANGLE_SCHEMA = sensor.sensor_schema(
 )
 
 SPEED_SCHEMA = sensor.sensor_schema(
-    unit_of_measurement="cm/s",
+    unit_of_measurement="mm/s",
     accuracy_decimals=0,
     state_class=STATE_CLASS_MEASUREMENT,
 )
@@ -69,9 +70,11 @@ COUNT_SCHEMA = sensor.sensor_schema(
 
 CONFIG_SCHEMA = cv.Schema(
     {
-        cv.GenerateID(): cv.use_id(LD2454Component),
+        cv.GenerateID(CONF_LD2454_ID): cv.use_id(LD2454Component),
 
         cv.Optional(CONF_TARGET_COUNT): COUNT_SCHEMA,
+        cv.Optional(CONF_MOVING_TARGET_COUNT): COUNT_SCHEMA,
+        cv.Optional(CONF_STILL_TARGET_COUNT): COUNT_SCHEMA,
 
         cv.Optional(CONF_TARGET_1_X): POSITION_SCHEMA,
         cv.Optional(CONF_TARGET_1_Y): POSITION_SCHEMA,
@@ -98,7 +101,7 @@ CONFIG_SCHEMA = cv.Schema(
 
 
 async def to_code(config):
-    parent = await cg.get_variable(config[CONF_ID])
+    parent = await cg.get_variable(config[CONF_LD2454_ID])
 
     mappings = [
         (CONF_TARGET_1_X, "set_target_x_sensor", 0),
@@ -131,3 +134,11 @@ async def to_code(config):
     if CONF_TARGET_COUNT in config:
         sens = await sensor.new_sensor(config[CONF_TARGET_COUNT])
         cg.add(parent.set_target_count_sensor(sens))
+
+    if CONF_MOVING_TARGET_COUNT in config:
+        sens = await sensor.new_sensor(config[CONF_MOVING_TARGET_COUNT])
+        cg.add(parent.set_moving_target_count_sensor(sens))
+
+    if CONF_STILL_TARGET_COUNT in config:
+        sens = await sensor.new_sensor(config[CONF_STILL_TARGET_COUNT])
+        cg.add(parent.set_still_target_count_sensor(sens))

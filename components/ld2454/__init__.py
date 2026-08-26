@@ -4,7 +4,6 @@ import esphome.config_validation as cv
 from esphome.components import uart
 from esphome.const import CONF_ID
 
-
 DEPENDENCIES = ["uart"]
 
 AUTO_LOAD = [
@@ -13,6 +12,7 @@ AUTO_LOAD = [
     "text_sensor",
 ]
 
+CONF_LD2454_ID = "ld2454_id"
 
 ld2454_ns = cg.esphome_ns.namespace("ld2454")
 
