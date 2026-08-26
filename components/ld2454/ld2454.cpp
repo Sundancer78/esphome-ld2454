@@ -63,14 +63,45 @@ int16_t LD2454Component::decode_signed_value_(
       static_cast<uint16_t>(low) |
       (static_cast<uint16_t>(high) << 8);
 
-  bool positive = (raw & 0x8000) != 0;
-  int16_t value = raw & 0x7FFF;
+  const bool positive = (raw & 0x8000) != 0;
+  const int16_t value = raw & 0x7FFF;
 
   return positive ? value : -value;
 }
 
+TargetDirection LD2454Component::determine_direction_(int16_t speed_mm_s) {
+  if (speed_mm_s > 0) {
+    return TargetDirection::APPROACHING;
+  }
+
+  if (speed_mm_s < 0) {
+    return TargetDirection::MOVING_AWAY;
+  }
+
+  return TargetDirection::STILL;
+}
+
+const char *LD2454Component::direction_to_string_(TargetDirection direction) {
+  switch (direction) {
+    case TargetDirection::APPROACHING:
+      return "Approaching";
+
+    case TargetDirection::MOVING_AWAY:
+      return "Moving away";
+
+    case TargetDirection::STILL:
+      return "Still";
+
+    case TargetDirection::NONE:
+    default:
+      return "None";
+  }
+}
+
 void LD2454Component::process_frame_() {
   uint8_t target_count = 0;
+  uint8_t moving_target_count = 0;
+  uint8_t still_target_count = 0;
 
   for (uint8_t target = 0; target < 3; target++) {
     const uint8_t offset = 4 + target * 8;
@@ -91,10 +122,12 @@ void LD2454Component::process_frame_() {
     if (empty) {
       data.x = 0;
       data.y = 0;
-      data.speed = 0;
+      data.speed_cm_s = 0;
+      data.speed_mm_s = 0;
       data.resolution = 0;
       data.distance = 0.0f;
       data.angle = 0.0f;
+      data.direction = TargetDirection::NONE;
 
       this->publish_target_(target);
       continue;
@@ -110,9 +143,12 @@ void LD2454Component::process_frame_() {
         this->frame_[offset + 2],
         this->frame_[offset + 3]);
 
-    data.speed = this->decode_signed_value_(
+    data.speed_cm_s = this->decode_signed_value_(
         this->frame_[offset + 4],
         this->frame_[offset + 5]);
+
+    data.speed_mm_s =
+        static_cast<int16_t>(data.speed_cm_s * 10);
 
     data.resolution =
         static_cast<uint16_t>(
@@ -132,6 +168,15 @@ void LD2454Component::process_frame_() {
             static_cast<float>(data.y)) *
         180.0f / M_PI;
 
+    data.direction =
+        this->determine_direction_(data.speed_mm_s);
+
+    if (data.speed_mm_s == 0) {
+      still_target_count++;
+    } else {
+      moving_target_count++;
+    }
+
     this->publish_target_(target);
   }
 
@@ -139,6 +184,30 @@ void LD2454Component::process_frame_() {
       target_count != this->last_target_count_) {
     this->target_count_sensor_->publish_state(target_count);
     this->last_target_count_ = target_count;
+  }
+
+  if (this->moving_target_count_sensor_ != nullptr &&
+      moving_target_count != this->last_moving_target_count_) {
+    this->moving_target_count_sensor_->publish_state(moving_target_count);
+    this->last_moving_target_count_ = moving_target_count;
+  }
+
+  if (this->still_target_count_sensor_ != nullptr &&
+      still_target_count != this->last_still_target_count_) {
+    this->still_target_count_sensor_->publish_state(still_target_count);
+    this->last_still_target_count_ = still_target_count;
+  }
+
+  const bool presence = target_count > 0;
+
+  if (this->presence_binary_sensor_ != nullptr &&
+      (!this->presence_initialized_ ||
+       presence != this->last_presence_)) {
+
+    this->presence_binary_sensor_->publish_state(presence);
+
+    this->last_presence_ = presence;
+    this->presence_initialized_ = true;
   }
 }
 
@@ -165,7 +234,11 @@ void LD2454Component::publish_target_(uint8_t target) {
       if (this->target_resolution_sensors_[target] != nullptr)
         this->target_resolution_sensors_[target]->publish_state(NAN);
 
+      if (this->target_direction_sensors_[target] != nullptr)
+        this->target_direction_sensors_[target]->publish_state("None");
+
       data.published_detected = false;
+      data.published_direction = TargetDirection::NONE;
     }
 
     return;
@@ -175,10 +248,11 @@ void LD2454Component::publish_target_(uint8_t target) {
       !data.published_detected ||
       data.x != data.published_x ||
       data.y != data.published_y ||
-      data.speed != data.published_speed ||
+      data.speed_mm_s != data.published_speed_mm_s ||
       data.resolution != data.published_resolution ||
       std::fabs(data.distance - data.published_distance) >= 1.0f ||
-      std::fabs(data.angle - data.published_angle) >= 0.1f;
+      std::fabs(data.angle - data.published_angle) >= 0.1f ||
+      data.direction != data.published_direction;
 
   if (!changed) {
     return;
@@ -197,24 +271,33 @@ void LD2454Component::publish_target_(uint8_t target) {
     this->target_angle_sensors_[target]->publish_state(data.angle);
 
   if (this->target_speed_sensors_[target] != nullptr)
-    this->target_speed_sensors_[target]->publish_state(data.speed);
+    this->target_speed_sensors_[target]->publish_state(data.speed_mm_s);
 
   if (this->target_resolution_sensors_[target] != nullptr)
     this->target_resolution_sensors_[target]->publish_state(data.resolution);
 
+  if (this->target_direction_sensors_[target] != nullptr &&
+      (!data.published_detected ||
+       data.direction != data.published_direction)) {
+
+    this->target_direction_sensors_[target]->publish_state(
+        this->direction_to_string_(data.direction));
+  }
+
   data.published_detected = true;
   data.published_x = data.x;
   data.published_y = data.y;
-  data.published_speed = data.speed;
+  data.published_speed_mm_s = data.speed_mm_s;
   data.published_resolution = data.resolution;
   data.published_distance = data.distance;
   data.published_angle = data.angle;
+  data.published_direction = data.direction;
 }
 
 void LD2454Component::dump_config() {
   ESP_LOGCONFIG(TAG, "LD2454:");
-  ESP_LOGCONFIG(TAG, "  Custom ESPHome component");
   ESP_LOGCONFIG(TAG, "  Tracking frame parser enabled");
+  ESP_LOGCONFIG(TAG, "  Maximum targets: 3");
 
   this->check_uart_settings(256000);
 }
