@@ -11,6 +11,7 @@ DEPENDENCIES = ["ld2454"]
 CONF_TARGET_1_DIRECTION = "target_1_direction"
 CONF_TARGET_2_DIRECTION = "target_2_direction"
 CONF_TARGET_3_DIRECTION = "target_3_direction"
+CONF_FIRMWARE_VERSION = "firmware_version"
 
 
 CONFIG_SCHEMA = {
@@ -23,6 +24,9 @@ CONFIG_SCHEMA = {
         text_sensor.text_sensor_schema(),
 
     cv.Optional(CONF_TARGET_3_DIRECTION):
+        text_sensor.text_sensor_schema(),
+
+    cv.Optional(CONF_FIRMWARE_VERSION):
         text_sensor.text_sensor_schema(),
 }
 
@@ -41,3 +45,6 @@ async def to_code(config):
     if target_3_config := config.get(CONF_TARGET_3_DIRECTION):
         sens = await text_sensor.new_text_sensor(target_3_config)
         cg.add(parent.set_target_direction_sensor(2, sens))
+    if firmware_config := config.get(CONF_FIRMWARE_VERSION):
+        sens = await text_sensor.new_text_sensor(firmware_config)
+        cg.add(parent.set_firmware_version_sensor(sens))
