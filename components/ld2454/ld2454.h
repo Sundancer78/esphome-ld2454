@@ -5,7 +5,9 @@
 #include <cstdint>
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/button/button.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/switch/switch.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
@@ -30,7 +32,37 @@ enum class CommandTestState : uint8_t {
   WAIT_EXIT_ACK,
 
   DONE,
-  FAILED
+  FAILED,
+
+  WAIT_RESTART_ENTER_ACK,
+  WAIT_SEND_RESTART,
+  WAIT_RESTART_ACK,
+  WAIT_RADAR_RETURN,
+
+  WAIT_MODE_ENTER_ACK,
+  WAIT_SEND_MODE,
+  WAIT_MODE_ACK,
+  WAIT_SEND_MODE_VERIFY,
+  WAIT_MODE_VERIFY_ACK,
+  WAIT_SEND_MODE_EXIT,
+  WAIT_MODE_EXIT_ACK,
+
+  WAIT_SEND_QUERY_ENTER,
+  WAIT_QUERY_ENTER_ACK,
+  WAIT_SEND_QUERY_MODE,
+  WAIT_QUERY_MODE_ACK,
+  WAIT_SEND_QUERY_EXIT,
+  WAIT_QUERY_EXIT_ACK,
+
+  WAIT_FACTORY_ENTER_ACK,
+  WAIT_SEND_FACTORY_RESET,
+  WAIT_FACTORY_RESET_ACK,
+
+  WAIT_BAUD_ENTER_ACK,
+  WAIT_SEND_BAUD,
+  WAIT_BAUD_ACK,
+  WAIT_SEND_BAUD_EXIT,
+  WAIT_BAUD_EXIT_ACK
 };
 
 struct TargetData {
@@ -142,6 +174,23 @@ class LD2454Component : public Component, public uart::UARTDevice {
     this->presence_binary_sensor_ = sensor;
   }
 
+  // Restart command requested by ESPHome button
+  void restart_radar();
+
+  // Factory reset requested by ESPHome button
+  void factory_reset_radar();
+
+  // Advanced A1 command. Intentionally not exposed as a normal ESPHome entity.
+  // The new baud rate is stored by the radar and becomes active only after
+  // the radar is restarted/power-cycled. The ESPHome UART configuration must
+  // be changed to the same baud rate before that restart.
+  bool set_radar_baud_rate(uint32_t baud_rate);
+
+  // Single-/multi-target mode requested by ESPHome switch
+  void set_multi_target_mode(bool enabled);
+  void set_multi_target_switch(switch_::Switch *sw) { this->multi_target_switch_ = sw; }
+  void query_target_mode();
+
 
  protected:
   // ===========================================================================
@@ -201,6 +250,18 @@ class LD2454Component : public Component, public uart::UARTDevice {
   uint32_t next_command_time_{0};
 
   bool command_test_started_{false};
+
+  bool requested_multi_target_mode_{false};
+  bool queried_multi_target_mode_{false};
+
+  uint32_t requested_baud_rate_{256000};
+  uint16_t requested_baud_index_{0x0007};
+  bool target_mode_query_valid_{false};
+  switch_::Switch *multi_target_switch_{nullptr};
+
+  // Set after A3. The first valid tracking frame proves that the radar is back.
+  bool waiting_for_radar_return_{false};
+  bool radar_return_after_factory_reset_{false};
 
 
   // ===========================================================================
@@ -295,6 +356,15 @@ class LD2454Component : public Component, public uart::UARTDevice {
 
   void exit_config_mode_();
 
+  void send_restart_command_();
+
+  void send_factory_reset_command_();
+
+  void send_baud_rate_command_();
+
+  void send_target_mode_command_();
+  void send_query_target_mode_command_();
+
 
   // ===========================================================================
   // Non-blocking command test
@@ -323,6 +393,35 @@ class LD2454Component : public Component, public uart::UARTDevice {
 
   const char *direction_to_string_(
       TargetDirection direction);
+};
+
+class LD2454MultiTargetSwitch : public switch_::Switch {
+ public:
+  void set_parent(LD2454Component *parent) { this->parent_ = parent; }
+
+ protected:
+  void write_state(bool state) override;
+  LD2454Component *parent_{nullptr};
+};
+
+class LD2454RestartButton : public button::Button {
+ public:
+  void set_parent(LD2454Component *parent) { this->parent_ = parent; }
+
+ protected:
+  void press_action() override;
+
+  LD2454Component *parent_{nullptr};
+};
+
+class LD2454FactoryResetButton : public button::Button {
+ public:
+  void set_parent(LD2454Component *parent) { this->parent_ = parent; }
+
+ protected:
+  void press_action() override;
+
+  LD2454Component *parent_{nullptr};
 };
 
 }  // namespace ld2454

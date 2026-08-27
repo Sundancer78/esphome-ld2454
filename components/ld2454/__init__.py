@@ -10,6 +10,8 @@ AUTO_LOAD = [
     "sensor",
     "binary_sensor",
     "text_sensor",
+    "button",
+    "switch",
 ]
 
 CONF_LD2454_ID = "ld2454_id"
