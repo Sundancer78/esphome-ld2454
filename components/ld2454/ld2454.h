@@ -174,6 +174,10 @@ class LD2454Component : public Component, public uart::UARTDevice {
     this->presence_binary_sensor_ = sensor;
   }
 
+  void set_online_binary_sensor(binary_sensor::BinarySensor *sensor) {
+    this->online_binary_sensor_ = sensor;
+  }
+
   // Restart command requested by ESPHome button
   void restart_radar();
 
@@ -300,6 +304,11 @@ class LD2454Component : public Component, public uart::UARTDevice {
 
 
   binary_sensor::BinarySensor *presence_binary_sensor_{nullptr};
+  binary_sensor::BinarySensor *online_binary_sensor_{nullptr};
+
+  bool radar_online_{false};
+  bool radar_online_initialized_{false};
+  uint32_t last_valid_tracking_frame_ms_{0};
 
 
   // ===========================================================================
@@ -393,6 +402,8 @@ class LD2454Component : public Component, public uart::UARTDevice {
 
   const char *direction_to_string_(
       TargetDirection direction);
+
+  void set_radar_online_(bool online);
 };
 
 class LD2454MultiTargetSwitch : public switch_::Switch {

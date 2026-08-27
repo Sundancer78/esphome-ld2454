@@ -78,6 +78,23 @@ void LD2454Component::loop() {
 
 
   // ---------------------------------------------------------------------------
+  // Radar connectivity diagnostic
+  //
+  // The LD2454 normally sends tracking frames at 10 Hz. Two seconds without a
+  // valid frame is therefore a strong indication that the radar is no longer
+  // communicating. During an intentional restart/reset WAIT_RADAR_RETURN owns
+  // the recovery handling, so we do not emit an additional timeout here.
+  // ---------------------------------------------------------------------------
+
+  if (this->radar_online_ &&
+      !this->waiting_for_radar_return_ &&
+      millis() - this->last_valid_tracking_frame_ms_ > 2000) {
+    this->set_radar_online_(false);
+    ESP_LOGW(TAG, "LD2454 tracking data lost; radar marked offline");
+  }
+
+
+  // ---------------------------------------------------------------------------
   // Nichtblockierende Command-State-Machine
   // ---------------------------------------------------------------------------
 
@@ -334,7 +351,7 @@ void LD2454Component::reset_command_parser_() {
 
 void LD2454Component::process_command_frame_() {
 
-  ESP_LOGD(
+  ESP_LOGV(
       TAG,
       "LD2454 command response: payload=%u bytes",
       this->command_payload_length_);
@@ -355,11 +372,11 @@ void LD2454Component::process_command_frame_() {
         (static_cast<uint16_t>(this->command_payload_[3]) << 8);
   }
 
-  ESP_LOGD(TAG, "  Command: 0x%02X", command);
-  ESP_LOGD(TAG, "  Response: 0x%02X", response);
+  ESP_LOGV(TAG, "  Command: 0x%02X", command);
+  ESP_LOGV(TAG, "  Response: 0x%02X", response);
 
   if (this->command_payload_length_ >= 4) {
-    ESP_LOGD(TAG, "  Status: 0x%04X", status);
+    ESP_LOGV(TAG, "  Status: 0x%04X", status);
   }
 
   // ===========================================================================
@@ -369,7 +386,7 @@ void LD2454Component::process_command_frame_() {
   if (this->command_payload_length_ > 4) {
     const uint16_t data_length = this->command_payload_length_ - 4;
 
-    ESP_LOGD(TAG, "  Data length: %u bytes", data_length);
+    ESP_LOGV(TAG, "  Data length: %u bytes", data_length);
 
     // -------------------------------------------------------------------------
     // A0 = Firmware-Version
@@ -564,7 +581,7 @@ void LD2454Component::send_command_(
   }
 
 
-  ESP_LOGD(
+  ESP_LOGV(
       TAG,
       "TX command 0x%02X (%u byte payload)",
       command,
@@ -1356,6 +1373,7 @@ void LD2454Component::process_command_test_response_(
           TAG,
           "LD2454 should restart now; waiting for radar to return");
 
+      this->set_radar_online_(false);
       this->waiting_for_radar_return_ = true;
       this->radar_return_after_factory_reset_ = false;
       this->command_test_state_ = CommandTestState::WAIT_RADAR_RETURN;
@@ -1590,6 +1608,7 @@ void LD2454Component::process_command_test_response_(
       ESP_LOGI(TAG, "LD2454 factory reset command acknowledged");
       ESP_LOGI(TAG, "LD2454 factory reset accepted; waiting for radar to return");
 
+      this->set_radar_online_(false);
       this->waiting_for_radar_return_ = true;
       this->radar_return_after_factory_reset_ = true;
       this->command_test_state_ = CommandTestState::WAIT_RADAR_RETURN;
@@ -1598,6 +1617,24 @@ void LD2454Component::process_command_test_response_(
 
     default:
       break;
+  }
+}
+
+
+// =============================================================================
+// Radar connectivity diagnostic
+// =============================================================================
+
+void LD2454Component::set_radar_online_(bool online) {
+  if (this->radar_online_initialized_ && this->radar_online_ == online) {
+    return;
+  }
+
+  this->radar_online_ = online;
+  this->radar_online_initialized_ = true;
+
+  if (this->online_binary_sensor_ != nullptr) {
+    this->online_binary_sensor_->publish_state(online);
   }
 }
 
@@ -1688,6 +1725,9 @@ const char *LD2454Component::direction_to_string_(
 // =============================================================================
 
 void LD2454Component::process_frame_() {
+
+  this->last_valid_tracking_frame_ms_ = millis();
+  this->set_radar_online_(true);
 
   // A valid tracking frame is the most reliable indication that the radar has
   // completed its reboot and resumed normal operation. After restart/reset we
