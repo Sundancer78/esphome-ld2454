@@ -173,6 +173,21 @@ class LD2454Component : public Component, public uart::UARTDevice {
   void set_presence_binary_sensor(binary_sensor::BinarySensor *sensor) {
     this->presence_binary_sensor_ = sensor;
   }
+  
+  void set_moving_presence_binary_sensor(binary_sensor::BinarySensor *sensor) {
+	this->moving_presence_binary_sensor_ = sensor;
+  }
+
+  void set_still_presence_binary_sensor(binary_sensor::BinarySensor *sensor) {
+    this->still_presence_binary_sensor_ = sensor;
+  }
+
+  void set_target_active_binary_sensor(
+      uint8_t target,
+      binary_sensor::BinarySensor *sensor) {
+    if (target < 3)
+      this->target_active_binary_sensors_[target] = sensor;
+  }
 
   void set_online_binary_sensor(binary_sensor::BinarySensor *sensor) {
     this->online_binary_sensor_ = sensor;
@@ -304,6 +319,13 @@ class LD2454Component : public Component, public uart::UARTDevice {
 
 
   binary_sensor::BinarySensor *presence_binary_sensor_{nullptr};
+
+  binary_sensor::BinarySensor *moving_presence_binary_sensor_{nullptr};
+  binary_sensor::BinarySensor *still_presence_binary_sensor_{nullptr};
+
+  binary_sensor::BinarySensor *target_active_binary_sensors_[3]{
+      nullptr, nullptr, nullptr};
+
   binary_sensor::BinarySensor *online_binary_sensor_{nullptr};
 
   bool radar_online_{false};

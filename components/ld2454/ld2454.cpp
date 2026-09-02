@@ -588,14 +588,6 @@ void LD2454Component::send_command_(
       payload_length);
 
 
-  // ---------------------------------------------------------------------------
-  // Wichtig:
-  //
-  // Kein flush() mehr.
-  //
-  // Hardware-UART übernimmt die Übertragung im Hintergrund.
-  // ---------------------------------------------------------------------------
-
   this->write_array(
       buffer,
       pos);
@@ -1944,6 +1936,19 @@ void LD2454Component::process_frame_() {
         still_target_count;
   }
 
+  // ---------------------------------------------------------------------------
+  // Moving / still presence
+  // ---------------------------------------------------------------------------
+
+  if (this->moving_presence_binary_sensor_ != nullptr) {
+    this->moving_presence_binary_sensor_->
+        publish_state(moving_target_count > 0);
+  }
+
+  if (this->still_presence_binary_sensor_ != nullptr) {
+    this->still_presence_binary_sensor_->
+        publish_state(still_target_count > 0);
+  }
 
   // ---------------------------------------------------------------------------
   // Presence
@@ -1981,6 +1986,11 @@ void LD2454Component::publish_target_(
 
   auto &data =
       this->targets_[target];
+	  
+  if (this->target_active_binary_sensors_[target] != nullptr) {
+    this->target_active_binary_sensors_[target]->
+        publish_state(data.detected);
+  }
 
 
   // ---------------------------------------------------------------------------
