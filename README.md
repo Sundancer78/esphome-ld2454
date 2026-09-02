@@ -276,6 +276,8 @@ Current focus:
 - Single / Multi Target behavior
 - Real-world comparison between multiple LD2454 modules
 
+Target mode after restart: The LD2454 may return to Single Target mode after a radar restart or factory reset. The component re-reads the actual target mode after the radar comes back online and updates the switch accordingly.
+
 This project should currently be considered **experimental**.
 
 Bug reports, test results and observations are welcome.
