@@ -211,6 +211,21 @@ binary_sensor:
     presence:
       name: "LD2454 Presence"
 
+    moving_presence:
+      name: "LD2454 Moving Presence"
+
+    still_presence:
+      name: "LD2454 Still Presence"
+
+    target_1_active:
+      name: "LD2454 Target 1 Active"
+
+    target_2_active:
+      name: "LD2454 Target 2 Active"
+
+    target_3_active:
+      name: "LD2454 Target 3 Active"
+
     online:
       name: "LD2454 Status"
 
