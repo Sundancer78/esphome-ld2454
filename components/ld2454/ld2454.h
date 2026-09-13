@@ -39,6 +39,7 @@ enum class CommandTestState : uint8_t {
   WAIT_RESTART_ACK,
   WAIT_RADAR_RETURN,
 
+  WAIT_SEND_MODE_ENTER,
   WAIT_MODE_ENTER_ACK,
   WAIT_SEND_MODE,
   WAIT_MODE_ACK,
@@ -272,6 +273,11 @@ class LD2454Component : public Component, public uart::UARTDevice {
 
   bool requested_multi_target_mode_{false};
   bool queried_multi_target_mode_{false};
+
+  // Initial switch state supplied by ESPHome restore_mode.
+  // false = single target, true = multi target.
+  bool startup_target_mode_valid_{false};
+  bool startup_multi_target_mode_{false};
 
   uint32_t requested_baud_rate_{256000};
   uint16_t requested_baud_index_{0x0007};

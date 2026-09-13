@@ -20,6 +20,7 @@ CONFIG_SCHEMA = {
     cv.Optional(CONF_MULTI_TARGET): switch.switch_schema(
         LD2454MultiTargetSwitch,
         entity_category=ENTITY_CATEGORY_CONFIG,
+        default_restore_mode="RESTORE_DEFAULT_OFF",
     ),
 }
 

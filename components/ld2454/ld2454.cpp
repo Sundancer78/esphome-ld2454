@@ -5,6 +5,7 @@
 
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
+#include "esphome/core/preferences.h"
 
 namespace esphome {
 namespace ld2454 {
@@ -39,6 +40,26 @@ void LD2454Component::setup() {
   ESP_LOGI(TAG, "LD2454 component started");
 
   this->reset_command_parser_();
+
+  // Let ESPHome own persistence of the target-mode switch.
+  // RESTORE_DEFAULT_OFF means: restore the last confirmed switch state and
+  // use Single Target (OFF) on the first boot when no value exists yet.
+  if (this->multi_target_switch_ != nullptr) {
+    auto initial_state = this->multi_target_switch_->get_initial_state_with_restore_mode();
+
+    if (initial_state.has_value()) {
+      this->startup_target_mode_valid_ = true;
+      this->startup_multi_target_mode_ = initial_state.value();
+
+      ESP_LOGI(
+          TAG,
+          "ESPHome target-mode restore request: %s",
+          this->startup_multi_target_mode_ ? "multi" : "single");
+    } else {
+      this->startup_target_mode_valid_ = false;
+      ESP_LOGI(TAG, "ESPHome target-mode restore disabled; radar mode will be read after startup");
+    }
+  }
 
   this->setup_time_ = millis();
 }
@@ -999,6 +1020,20 @@ void LD2454Component::process_command_test_() {
 
 
   // ---------------------------------------------------------------------------
+  // Target mode: enter configuration mode after a short delay.
+  // Used when applying the ESPHome-restored mode after startup/restart.
+  // ---------------------------------------------------------------------------
+
+  if (this->command_test_state_ == CommandTestState::WAIT_SEND_MODE_ENTER) {
+    if (static_cast<int32_t>(now - this->next_command_time_) >= 0) {
+      this->command_test_state_ = CommandTestState::WAIT_MODE_ENTER_ACK;
+      this->command_deadline_ = now + 1500;
+      this->enter_config_mode_();
+    }
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
   // Target mode: send 0x90 (multi) or 0x80 (single).
   // ---------------------------------------------------------------------------
 
@@ -1310,9 +1345,22 @@ void LD2454Component::process_command_test_response_(
           TAG,
           "LD2454 command communication test PASSED");
 
-      // Direkt danach den tatsächlich gespeicherten Target-Modus abfragen,
-      // damit der ESPHome-Switch nach jedem Boot den echten Radarzustand zeigt.
-      this->command_test_state_ = CommandTestState::WAIT_SEND_QUERY_ENTER;
+      // Apply the state selected by ESPHome restore_mode only after UART
+      // communication has been proven to work. If restore_mode is DISABLED,
+      // read the actual radar state instead.
+      if (this->startup_target_mode_valid_) {
+        this->requested_multi_target_mode_ = this->startup_multi_target_mode_;
+
+        ESP_LOGI(
+            TAG,
+            "Applying ESPHome-restored LD2454 target mode: %s",
+            this->requested_multi_target_mode_ ? "multi" : "single");
+
+        this->command_test_state_ = CommandTestState::WAIT_SEND_MODE_ENTER;
+      } else {
+        this->command_test_state_ = CommandTestState::WAIT_SEND_QUERY_ENTER;
+      }
+
       this->next_command_time_ = millis() + 25;
 
       break;
@@ -1454,7 +1502,16 @@ void LD2454Component::process_command_test_response_(
       ESP_LOGI(TAG, "LD2454 target-mode configuration mode closed");
 
       if (this->multi_target_switch_ != nullptr) {
+        // publish_state() is the only persistence layer we need here. ESPHome
+        // stores the confirmed switch state according to restore_mode.
         this->multi_target_switch_->publish_state(this->queried_multi_target_mode_);
+
+        // ESPHome normally batches preference writes. Flush this confirmed
+        // mode immediately so a sudden power loss cannot resurrect an older
+        // target mode.
+        if (global_preferences != nullptr && !global_preferences->sync()) {
+          ESP_LOGW(TAG, "Failed to sync LD2454 switch preference to flash");
+        }
       }
 
       ESP_LOGI(
@@ -1494,8 +1551,16 @@ void LD2454Component::process_command_test_response_(
         return;
       }
 
+      // Keep the requested state aligned with the real radar state for later
+      // radar-only restarts.
+      this->requested_multi_target_mode_ = this->queried_multi_target_mode_;
+
       if (this->multi_target_switch_ != nullptr) {
         this->multi_target_switch_->publish_state(this->queried_multi_target_mode_);
+
+        if (global_preferences != nullptr && !global_preferences->sync()) {
+          ESP_LOGW(TAG, "Failed to sync LD2454 switch preference to flash");
+        }
       }
 
       this->command_test_state_ = CommandTestState::WAIT_SEND_QUERY_EXIT;
@@ -1733,11 +1798,27 @@ void LD2454Component::process_frame_() {
       ESP_LOGI(TAG, "LD2454 is back online after restart");
     }
 
-    ESP_LOGI(
-        TAG,
-        "Re-reading LD2454 target mode after %s",
-        this->radar_return_after_factory_reset_ ? "factory reset" : "radar restart");
-    this->command_test_state_ = CommandTestState::WAIT_SEND_QUERY_ENTER;
+    if (this->radar_return_after_factory_reset_) {
+      // Factory reset intentionally restores the radar defaults. Read the real
+      // state back; publishing that state also updates ESPHome's persisted
+      // switch state (Single/OFF on the LD2454 factory default).
+      ESP_LOGI(TAG, "Re-reading LD2454 target mode after factory reset");
+      this->command_test_state_ = CommandTestState::WAIT_SEND_QUERY_ENTER;
+    } else {
+      // A normal radar restart may return to Single Target. Re-apply the last
+      // confirmed mode represented by the ESPHome switch instead of creating a
+      // second, private preference store in this component.
+      if (this->multi_target_switch_ != nullptr) {
+        this->requested_multi_target_mode_ = this->multi_target_switch_->state;
+      }
+
+      ESP_LOGI(
+          TAG,
+          "Re-applying LD2454 target mode after radar restart: %s",
+          this->requested_multi_target_mode_ ? "multi" : "single");
+      this->command_test_state_ = CommandTestState::WAIT_SEND_MODE_ENTER;
+    }
+
     this->next_command_time_ = millis() + 100;
     this->radar_return_after_factory_reset_ = false;
   }
